@@ -21,8 +21,14 @@ A hysteresis band prevents needless switching. Status is shown on the CYD's
     <img src="./screenshots/screen_3.jpg" title="Override on" width="30%">
 </p>
 
-The **boot screen** shows the firmware version and the build timestamp baked in at compile time, so you can
-confirm at a glance which version is currently flashed.
+The **boot screen** shows the firmware version and the build timestamp baked in at compile time,
+so you can confirm at a glance which version is currently flashed.
+
+A tap on the header line (`FAN ON/OFF` and `DIAGNOSTICS`) will toggle between the main
+screen and the diagnostics screen.
+
+A tap on the three buttons at the bottom will switch between the override mode and the
+automatic (normal) mode.
 
 ## How it decides (control logic)
 
