@@ -1,0 +1,28 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+.clang_complete
+.gcc-flags.json
+
+# JetBrains
+.idea/
+.junie/
+
+# Device config holds MACs / WiFi / InfluxDB secrets — copy config_sample.json
+# to config.json locally; it is uploaded to the device via `pio run -t uploadfs`.
+data/config.json
+
+# host build artifacts
+*.o
+*.out
+
+# other
+TODO.md
+
+# AI
+.claude
+.opencode
+CLAUDE.md
+AGENTS.md

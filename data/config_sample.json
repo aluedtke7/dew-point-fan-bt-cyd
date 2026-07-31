@@ -1,0 +1,53 @@
+{
+  "inside": {
+    "mac": "9D:8B:00:00:18:BD",
+    "temperature-calibration": 0,
+    "humidity-calibration": 0
+  },
+  "outside": {
+    "mac": "9D:F2:00:00:14:B5",
+    "temperature-calibration": 0,
+    "humidity-calibration": 0
+  },
+  "fan": {
+    "minDiff": 3.0,
+    "hysteresis": 1.0,
+    "minHumidityInside": 30.0,
+    "minTempInside": 10.0,
+    "minTempOutside": -10.0
+  },
+  "wifi": {
+    "enabled": false,
+    "networks": [
+      {
+        "ssid": "<YOUR-WIFI-SSID>",
+        "password": "<YOUR-WIFI-PASSWORD>"
+      },
+      {
+        "ssid": "<YOUR-SECOND-WIFI-SSID>",
+        "password": "<YOUR-SECOND-WIFI-PASSWORD>"
+      }
+    ]
+  },
+  "shelly": {
+    "enabled": false,
+    "host": "<SHELLY-IP-OR-HOSTNAME>",
+    "switchId": 0
+  },
+  "ota": {
+    "password": ""
+  },
+  "influx": {
+    "enabled": false,
+    "url": "http://<IP-ADR-OF-INFLUXDB>:8086",
+    "token": "<INFLUX-TOKEN>",
+    "org": "private",
+    "bucket": "dpf-cyd"
+  },
+  "timezone": "<YOUR_TIMEZONE>",
+  "ui": {
+    "brightness": 80,
+    "dimLevel": 10,
+    "dimTimeout": 30
+  }
+}

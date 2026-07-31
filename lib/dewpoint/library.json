@@ -1,0 +1,11 @@
+{
+  "name": "dewpoint",
+  "version": "1.0.0",
+  "description": "Pure dew-point control logic (dew-point math, fan decision tree, WS02 beacon parsing, rolling averages, screen formatting, config validation). No Arduino/NimBLE/TFT dependencies so it builds and runs on the host under the PlatformIO native test environment.",
+  "keywords": "dewpoint, controller",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "libArchive": false
+  }
+}
