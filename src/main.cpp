@@ -54,6 +54,7 @@ std::string g_ip = "-";
 std::string g_ssid = "-";
 bool g_configOk = false;
 bool g_wifiUp = false;
+bool g_wifiReinitNeeded = false;
 bool g_clockSynced = false;  // true once NTP has set the wall clock
 
 // Human-readable reset cause, logged at boot so an unexpected overnight
@@ -175,7 +176,7 @@ void setup() {
   }
   // Shelly RPC + InfluxDB push run on their own task so the touch UI never
   // blocks on the synchronous HTTP calls.
-  netTaskBegin(app, shelly, &g_wifiUp);
+  netTaskBegin(app, shelly, &g_wifiUp, &g_wifiReinitNeeded);
 
   // WiFi is opt-in. On a no-PSRAM CYD, watch the free heap and confirm BLE keeps
   // delivering advertisements while associated (see README phase 3).
@@ -219,8 +220,9 @@ void loop() {
         // wake from dim: restore brightness and consume this tap
         backlight.set(app.config.brightness);
         dimmed = false;
-      } else if (tp.y < ui::kBannerH) {
+      } else if (tp.y < ui::kBannerH + 15) {
         // top banner -> switch between Dashboard and Diagnostics
+        // a little offset avoids touch screen calibration
         g_screen = (g_screen == Screen::Dashboard) ? Screen::Diagnostics
                                                    : Screen::Dashboard;
         renderNow = true;
@@ -306,14 +308,25 @@ void loop() {
     }
   }
 
-  if (ms - tHeapReport >= kHeapReportIntervalMs) {
-    tHeapReport = ms;
-    logf("[heap] periodic report\n");
-  }
+  // Use this log report in case of memory problems
+  // if (ms - tHeapReport >= kHeapReportIntervalMs) {
+  //   tHeapReport = ms;
+  //   logf("[heap] periodic report\n");
+  // }
 
   if (g_wifiUp) {
     otaHandle();
     httpHandle();
+  }
+
+  // After the net task reconnects a dropped WiFi link, re-bind listeners and
+  // re-sync the wall clock so the OTA/HTTP/age-check services work again.
+  if (g_wifiReinitNeeded) {
+    g_wifiReinitNeeded = false;
+    ntpSync(5000, app.config.timezone);
+    g_clockSynced = (time(nullptr) >= 1000000000L);
+    httpBegin(app);
+    otaBegin(app.config.otaPassword.c_str());
   }
 
   delay(1);  // yield to the BLE / WiFi FreeRTOS tasks (not a blocking sleep)

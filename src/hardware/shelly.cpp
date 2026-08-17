@@ -33,6 +33,7 @@ HTTPClient g_http;
 // One HTTP GET attempt. Returns the HTTP status code (200 = success), or a
 // negative HTTPClient error code; `outErrno` receives errno on failure.
 int getOnce(const char* url, int& outErrno) {
+  g_http.end();  // release any stale WiFiClient from a previous failed call
   g_http.setConnectTimeout(kHttpTimeoutMs);
   g_http.setTimeout(kHttpTimeoutMs);
   if (!g_http.begin(url)) {

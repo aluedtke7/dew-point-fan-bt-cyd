@@ -15,7 +15,9 @@
 namespace dpf {
 
 // Start the network control task. `wifiUp` points at the shared "WiFi
-// associated" flag; the task idles while it is false.
-void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp);
+// associated" flag; the task idles while it is false.  When the task
+// reconnects after a link drop it sets *wifiReinitNeeded = true so the
+// main loop can re-bind listeners and re-sync NTP.
+void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp, bool* wifiReinitNeeded);
 
 }  // namespace dpf

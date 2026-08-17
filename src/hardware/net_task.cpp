@@ -16,6 +16,7 @@ namespace {
 App* g_app = nullptr;
 Shelly* g_shelly = nullptr;
 bool* g_wifiUp = nullptr;
+bool* g_wifiReinitNeeded = nullptr;
 
 // Task cadence and back-off, matching the old loop() scheduler.
 constexpr uint32_t kTickMs = 1000;
@@ -63,6 +64,7 @@ void netTask(void*) {
       }
       if (WiFi.status() == WL_CONNECTED) {
         *g_wifiUp = true;
+        if (g_wifiReinitNeeded) *g_wifiReinitNeeded = true;
         IPAddress ip = WiFi.localIP();
         char ipBuf[16];
         snprintf(ipBuf, sizeof(ipBuf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
@@ -148,10 +150,11 @@ void netTask(void*) {
 }
 }  // namespace
 
-void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp) {
+void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp, bool* wifiReinitNeeded) {
   g_app = &app;
   g_shelly = &shelly;
   g_wifiUp = wifiUp;
+  g_wifiReinitNeeded = wifiReinitNeeded;
   // Pin to core 0 so the blocking HTTP calls never contend with loop()/touch
   // on core 1. Stack 8192 is sufficient: the same calls ran inside loop()'s
   // 8192-byte task stack before the move.

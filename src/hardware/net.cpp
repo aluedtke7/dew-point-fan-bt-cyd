@@ -288,6 +288,7 @@ void influxPush(App& app) {
   // Persistent HTTPClient: the underlying WiFiClient socket is reused across
   // pushes, avoiding heap alloc/free of the socket state every 60 s.
   static HTTPClient http;
+  http.end();
   http.begin(url);
   http.addHeader("Authorization", auth);
   http.addHeader("Content-Type", "text/plain");
