@@ -50,4 +50,15 @@ size_t formatHeapSuffix(char* buf, size_t cap, uint32_t freeHeap,
       static_cast<unsigned long>(largestBlock)));
 }
 
+size_t formatNetLine(char* buf, size_t cap, const char* ip, const char* ssid,
+                     bool online) {
+  if (!online || ip == nullptr || ip[0] == '\0') {
+    return static_cast<size_t>(std::snprintf(buf, cap, "IP -- (offline)"));
+  }
+  if (ssid == nullptr || ssid[0] == '\0') {
+    return static_cast<size_t>(std::snprintf(buf, cap, "IP %s", ip));
+  }
+  return static_cast<size_t>(std::snprintf(buf, cap, "IP %s   %s", ip, ssid));
+}
+
 }  // namespace dpf

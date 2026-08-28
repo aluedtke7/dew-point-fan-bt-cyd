@@ -15,9 +15,12 @@
 namespace dpf {
 
 // Start the network control task. `wifiUp` points at the shared "WiFi
-// associated" flag; the task idles while it is false.  When the task
-// reconnects after a link drop it sets *wifiReinitNeeded = true so the
-// main loop can re-bind listeners and re-sync NTP.
-void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp, bool* wifiReinitNeeded);
+// associated" flag, which the task owns: it clears the flag when the link
+// drops and sets it again once the link (and a DHCP address) are back. The
+// Shelly RPC and the InfluxDB push idle while it is false.  After a successful
+// recovery the task sets *wifiReinitNeeded = true so the main loop can re-bind
+// listeners and re-sync NTP.
+void netTaskBegin(App& app, Shelly& shelly, volatile bool* wifiUp,
+                  volatile bool* wifiReinitNeeded);
 
 }  // namespace dpf

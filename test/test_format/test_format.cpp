@@ -94,6 +94,30 @@ void test_heap_suffix_zeros() {
   TEST_ASSERT_EQUAL_STRING("heap=0 min=0 blk=0", buf);
 }
 
+void test_net_line_online() {
+  char buf[64];
+  formatNetLine(buf, sizeof(buf), "192.168.178.42", "FRITZ!Box-Gast", true);
+  TEST_ASSERT_EQUAL_STRING("IP 192.168.178.42   FRITZ!Box-Gast", buf);
+}
+
+void test_net_line_offline_drops_stale_address() {
+  char buf[64];
+  formatNetLine(buf, sizeof(buf), "192.168.178.42", "FRITZ!Box-Gast", false);
+  TEST_ASSERT_EQUAL_STRING("IP -- (offline)", buf);
+}
+
+void test_net_line_online_without_ssid() {
+  char buf[64];
+  formatNetLine(buf, sizeof(buf), "10.0.0.7", "", true);
+  TEST_ASSERT_EQUAL_STRING("IP 10.0.0.7", buf);
+}
+
+void test_net_line_online_without_ip_is_offline() {
+  char buf[64];
+  formatNetLine(buf, sizeof(buf), "", "FRITZ!Box-Gast", true);
+  TEST_ASSERT_EQUAL_STRING("IP -- (offline)", buf);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_measure_temperature_with_degree);
@@ -108,5 +132,9 @@ int main() {
   RUN_TEST(test_log_timestamp_format);
   RUN_TEST(test_heap_suffix);
   RUN_TEST(test_heap_suffix_zeros);
+  RUN_TEST(test_net_line_online);
+  RUN_TEST(test_net_line_offline_drops_stale_address);
+  RUN_TEST(test_net_line_online_without_ssid);
+  RUN_TEST(test_net_line_online_without_ip_is_offline);
   return UNITY_END();
 }

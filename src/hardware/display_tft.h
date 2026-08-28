@@ -46,7 +46,7 @@ class DisplayTft {
   // sharing the same Auto/On/Off button row.
   void showDiagnostics(const SensorData& inside, const SensorData& outside,
                        int overrideMode, const std::string& ip,
-                       const std::string& ssid, double now);
+                       const std::string& ssid, bool online, double now);
 
  private:
   Screen screen_ = Screen::Boot;

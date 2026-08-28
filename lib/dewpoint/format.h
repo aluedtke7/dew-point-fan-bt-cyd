@@ -40,4 +40,12 @@ size_t formatLogTimestamp(char* buf, size_t cap, time_t epoch);
 size_t formatHeapSuffix(char* buf, size_t cap, uint32_t freeHeap,
                         uint32_t minFreeHeap, uint32_t largestBlock);
 
+// The network identity line on the diagnostics screen:
+//   online  -> "IP <ip>   <ssid>"  (the SSID and its separator are omitted when
+//              `ssid` is null/empty, so there is no trailing whitespace)
+//   !online -> "IP -- (offline)"   — the stale address is dropped deliberately,
+//              so a moved lease is distinguishable from a dead link.
+size_t formatNetLine(char* buf, size_t cap, const char* ip, const char* ssid,
+                     bool online);
+
 }  // namespace dpf

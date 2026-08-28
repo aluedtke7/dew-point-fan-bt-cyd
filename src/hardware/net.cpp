@@ -165,6 +165,8 @@ WifiResult connectWifi(const WifiConfig& cfg, uint32_t timeoutMs) {
   if (!cfg.enabled || cfg.networks.empty()) return {"", ""};
 
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);  // let the SDK retry too, alongside net_task
+  WiFi.persistent(false);       // don't rewrite flash on every association
   // DHCP/station hostname shown in the router; matches the OTA mDNS name
   // (kHostname in ota.cpp). Must be set after WIFI_STA mode and before begin().
   WiFi.setHostname("dpf-cyd");
@@ -237,12 +239,20 @@ void ntpSync(uint32_t timeoutMs, const std::string& timezone) {
 
 void httpBegin(App& app, uint16_t /*port*/) {
   g_app = &app;
-  // g_server is constructed on port 80 (the default); reconfiguring the port
-  // would require reconstructing it, which WebServer does not support cleanly.
-  g_server.on("/", HTTP_GET, handleRoot);
-  g_server.on("/info", HTTP_GET, handleInfo);
-  g_server.on("/override", HTTP_POST, handleOverride);
-  g_server.on("/logs", HTTP_GET, handleLogs);
+  // WebServer::on() appends to a handler list with no dedup and no way to
+  // remove entries, so registering the routes again on every WiFi reconnect
+  // would leak four handlers each time. Register once; begin() is safe to
+  // repeat (it closes the listening socket first).
+  static bool routesRegistered = false;
+  if (!routesRegistered) {
+    routesRegistered = true;
+    // g_server is constructed on port 80 (the default); reconfiguring the port
+    // would require reconstructing it, which WebServer does not support cleanly.
+    g_server.on("/", HTTP_GET, handleRoot);
+    g_server.on("/info", HTTP_GET, handleInfo);
+    g_server.on("/override", HTTP_POST, handleOverride);
+    g_server.on("/logs", HTTP_GET, handleLogs);
+  }
   g_server.begin();
 }
 

@@ -6,8 +6,9 @@
 #include <freertos/task.h>
 #include <WiFi.h>
 
+#include "ble_scanner.h" // bleScannerPause / bleScannerResume
 #include "logging.h"
-#include "net.h"        // influxPush
+#include "net.h"        // connectWifi, influxPush
 #include "shelly_rpc.h" // shouldSendRpc, TriState
 
 namespace dpf {
@@ -15,8 +16,9 @@ namespace dpf {
 namespace {
 App* g_app = nullptr;
 Shelly* g_shelly = nullptr;
-bool* g_wifiUp = nullptr;
-bool* g_wifiReinitNeeded = nullptr;
+volatile bool* g_wifiUp = nullptr;
+volatile bool* g_wifiReinitNeeded = nullptr;
+bool g_wifiEnabled = false;
 
 // Task cadence and back-off, matching the old loop() scheduler.
 constexpr uint32_t kTickMs = 1000;
@@ -32,6 +34,16 @@ constexpr double kInfluxIntervalSec = 60.0;
 // is clean.
 constexpr double kStartupGraceSec = 15.0;
 
+// WiFi supervision. `WiFi.reconnect()` is the cheap first move; after
+// kWifiSoftAttempts we fall back to a full re-association (which re-runs the
+// best-RSSI scan and, crucially, re-applies the DHCP hostname). If the link is
+// still down after kWifiRebootSeconds we restart: a reset clears wedged
+// lwIP/WiFi driver state that WiFi.begin() alone cannot, and the next boot's
+// "[boot] reset reason: software" line records why.
+constexpr double kWifiRetrySeconds = 30.0;
+constexpr uint32_t kWifiSoftAttempts = 3;
+constexpr double kWifiRebootSeconds = 900.0;
+
 // Shelly command state. Owned solely by this task, so no lock is needed for these.
 TriState g_confirmed = TriState::Unknown;
 TriState g_target = TriState::Unknown;
@@ -44,8 +56,101 @@ uint32_t g_failCount = 0;
 // it is emitted exactly once rather than on every tick after the limit.
 bool g_gaveUpLogged = false;
 
+// WiFi supervision state. Owned solely by this task.
+double g_lastWifiAttempt = 0.0;
+uint32_t g_wifiFailCount = 0;
+double g_offlineSince = 0.0;  // monotonic seconds since the link went down
+// The offline restart only arms once the link has worked at least once this
+// boot. Otherwise an AP that is simply switched off would reboot the device
+// every 15 minutes, and the fan/display would restart with it.
+bool g_wasOnline = false;
+
 // Monotonic seconds clock, same timebase as main.cpp's nowSeconds().
 double nowSeconds() { return esp_timer_get_time() / 1000000.0; }
+
+// True when the station is associated *and* holds a DHCP lease. The ESP32
+// keeps reporting WL_CONNECTED after a lease lapses, leaving a 0.0.0.0 address
+// that is associated but unreachable, so the address is checked too.
+bool wifiLinkUp() {
+  return WiFi.status() == WL_CONNECTED && WiFi.localIP()[0] != 0;
+}
+
+void logWifiUp(const char* what) {
+  IPAddress ip = WiFi.localIP();
+  char ipBuf[16];
+  snprintf(ipBuf, sizeof(ipBuf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+  logf("[wifi] %s, IP: %s\n", what, ipBuf);
+}
+
+// Monitor the link and drive recovery. Runs every tick; the actual attempts are
+// spaced by kWifiRetrySeconds so an absent AP is not hammered.
+void superviseWifi(double now) {
+  if (wifiLinkUp()) {
+    if (!*g_wifiUp) {
+      *g_wifiUp = true;
+      if (g_wifiReinitNeeded) *g_wifiReinitNeeded = true;
+      logWifiUp("reconnected");
+    }
+    g_wifiFailCount = 0;
+    g_offlineSince = 0.0;
+    g_wasOnline = true;
+    return;
+  }
+
+  if (*g_wifiUp || g_offlineSince == 0.0) {
+    *g_wifiUp = false;
+    g_offlineSince = now;
+    g_lastWifiAttempt = now - kWifiRetrySeconds;  // attempt on this tick
+    logf("[wifi] link down, starting recovery\n");
+  }
+
+  if (g_wasOnline && now - g_offlineSince >= kWifiRebootSeconds) {
+    logf("[wifi] offline for %.0fs, restarting\n", now - g_offlineSince);
+    delay(50);  // flush serial + log buffer before restart
+    ESP.restart();
+  }
+
+  if (now - g_lastWifiAttempt < kWifiRetrySeconds) return;
+  g_lastWifiAttempt = now;
+  ++g_wifiFailCount;
+
+  if (g_wifiFailCount <= kWifiSoftAttempts) {
+    logf("[wifi] reconnect attempt %u\n", g_wifiFailCount);
+    WiFi.reconnect();
+    // Give the association up to 5 s; the next tick re-checks either way.
+    for (int i = 0; i < 50 && !wifiLinkUp(); ++i) {
+      vTaskDelay(pdMS_TO_TICKS(100));
+    }
+  } else {
+    // Soft reconnects only ever return to the AP chosen at boot and do not
+    // re-apply the DHCP hostname. A full re-association re-scans the configured
+    // networks and re-registers "dpf-cyd" with the router's DNS.
+    logf("[wifi] full re-association (attempt %u)\n", g_wifiFailCount);
+    WifiConfig cfg;
+    {
+      LockGuard lock(*g_app);
+      cfg = g_app->config.wifi;
+    }
+    // connectWifi() does a blocking scanNetworks(); a running NimBLE scan
+    // starves lwIP during it (see shelly.cpp).
+    bleScannerPause();
+    WiFi.disconnect(true);
+    connectWifi(cfg);
+    bleScannerResume();
+  }
+
+  if (wifiLinkUp()) {
+    *g_wifiUp = true;
+    if (g_wifiReinitNeeded) *g_wifiReinitNeeded = true;
+    g_wifiFailCount = 0;
+    g_offlineSince = 0.0;
+    g_wasOnline = true;
+    logWifiUp("reconnected");
+  } else {
+    logf("[wifi] attempt %u failed, retrying in %.0fs\n", g_wifiFailCount,
+         kWifiRetrySeconds);
+  }
+}
 
 void netTask(void*) {
   const double bootTime = nowSeconds();
@@ -53,28 +158,12 @@ void netTask(void*) {
   for (;;) {
     const double now = nowSeconds();
 
-    // WiFi reconnection: monitor the link and attempt recovery when it drops.
-    if (g_wifiUp && *g_wifiUp && WiFi.status() != WL_CONNECTED) {
-      *g_wifiUp = false;
-      logf("[wifi] disconnected, reconnecting...\n");
-      WiFi.reconnect();
-      // Give the reconnection up to 5 s before giving up for this tick.
-      for (int i = 0; i < 50 && WiFi.status() != WL_CONNECTED; ++i) {
-        vTaskDelay(pdMS_TO_TICKS(100));
-      }
-      if (WiFi.status() == WL_CONNECTED) {
-        *g_wifiUp = true;
-        if (g_wifiReinitNeeded) *g_wifiReinitNeeded = true;
-        IPAddress ip = WiFi.localIP();
-        char ipBuf[16];
-        snprintf(ipBuf, sizeof(ipBuf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
-        logf("[wifi] reconnected, IP: %s\n", ipBuf);
-      } else {
-        logf("[wifi] reconnect failed, will retry next tick\n");
-      }
-    }
+    // WiFi supervision. Note this is gated on g_wifiEnabled, never on
+    // *g_wifiUp: the flag is cleared the moment the link drops, so gating on it
+    // would make the very first failed attempt permanent.
+    if (g_wifiEnabled) superviseWifi(now);
 
-    if (g_wifiUp && *g_wifiUp && (now - bootTime >= kStartupGraceSec)) {
+    if (*g_wifiUp && (now - bootTime >= kStartupGraceSec)) {
       bool shouldBeOn = false;
       bool shellyEnabled = false;
       bool sensorsReady = false;
@@ -150,11 +239,13 @@ void netTask(void*) {
 }
 }  // namespace
 
-void netTaskBegin(App& app, Shelly& shelly, bool* wifiUp, bool* wifiReinitNeeded) {
+void netTaskBegin(App& app, Shelly& shelly, volatile bool* wifiUp,
+                  volatile bool* wifiReinitNeeded) {
   g_app = &app;
   g_shelly = &shelly;
   g_wifiUp = wifiUp;
   g_wifiReinitNeeded = wifiReinitNeeded;
+  g_wifiEnabled = app.config.wifi.enabled;
   // Pin to core 0 so the blocking HTTP calls never contend with loop()/touch
   // on core 1. Stack 8192 is sufficient: the same calls ran inside loop()'s
   // 8192-byte task stack before the move.

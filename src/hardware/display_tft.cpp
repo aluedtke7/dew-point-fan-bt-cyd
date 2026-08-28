@@ -70,7 +70,7 @@ namespace dpf
       kFIp,
       kFieldCount
     };
-    constexpr int kFieldCacheLen = 32;
+    constexpr int kFieldCacheLen = 48;  // must exceed the longest field (the IP/SSID line)
     char g_cache[kFieldCount][kFieldCacheLen];
 
     void clearCache()
@@ -319,9 +319,12 @@ namespace dpf
   }
 
   void DisplayTft::showDiagnostics(const SensorData &inside,
-                                   const SensorData &outside, int overrideMode,
+                                   const SensorData &outside,
+                                   int overrideMode,
                                    const std::string &ip,
-                                   const std::string &ssid, double now)
+                                   const std::string &ssid,
+                                   bool online,
+                                   double now)
   {
     if (screen_ != Screen::Diagnostics)
     {
@@ -371,7 +374,7 @@ namespace dpf
     field(kFSeenOut, buf, 265, 154, kMed, kValue, kBg, MC_DATUM, rowPad);
 
     char ipBuf[80];
-    std::snprintf(ipBuf, sizeof(ipBuf), "IP %s   %s", ip.c_str(), ssid.c_str());
+    formatNetLine(ipBuf, sizeof(ipBuf), ip.c_str(), ssid.c_str(), online);
     field(kFIp, ipBuf, 10, 180, kMed, kLabel, kBg, ML_DATUM, ui::kScreenW);
 
     drawButtons(overrideMode);

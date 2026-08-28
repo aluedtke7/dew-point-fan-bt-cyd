@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
+#include <WiFi.h>
 
 #include <cstring>
 #include <string>
@@ -50,11 +51,11 @@ std::string formatBuildTime() {
   return std::string(buf);
 }
 
-std::string g_ip = "-";
-std::string g_ssid = "-";
+std::string g_ip;
+std::string g_ssid;
 bool g_configOk = false;
-bool g_wifiUp = false;
-bool g_wifiReinitNeeded = false;
+volatile bool g_wifiUp = false;
+volatile bool g_wifiReinitNeeded = false;
 bool g_clockSynced = false;  // true once NTP has set the wall clock
 
 // Human-readable reset cause, logged at boot so an unexpected overnight
@@ -109,6 +110,21 @@ uint32_t tLastActivity = 0;
 bool dimmed = false;
 Screen g_screen = Screen::Dashboard;
 
+// Refresh the IP/SSID shown on the diagnostics screen from the WiFi driver.
+// Called from the main task only, so `g_ip`/`g_ssid` stay single-threaded.
+void refreshNetIdentity() {
+  if (!g_wifiUp) {
+    g_ip.clear();
+    g_ssid.clear();
+    return;
+  }
+  IPAddress ip = WiFi.localIP();
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+  g_ip = buf;
+  g_ssid = WiFi.SSID().c_str();
+}
+
 // Draw the active screen from a snapshot of the shared state taken under lock.
 void renderScreen() {
   SensorData inside, outside;
@@ -123,7 +139,8 @@ void renderScreen() {
   }
   const double now = freshnessNow();
   if (g_screen == Screen::Diagnostics) {
-    display.showDiagnostics(inside, outside, ovr, g_ip, g_ssid, now);
+    refreshNetIdentity();
+    display.showDiagnostics(inside, outside, ovr, g_ip, g_ssid, g_wifiUp, now);
   } else {
     display.showDashboard(inside, outside, result, app.config.fanConfig, ovr, now);
   }
@@ -174,9 +191,6 @@ void setup() {
   if (app.config.shelly.enabled) {
     shelly.begin(app.config.shelly.host, app.config.shelly.switchId);
   }
-  // Shelly RPC + InfluxDB push run on their own task so the touch UI never
-  // blocks on the synchronous HTTP calls.
-  netTaskBegin(app, shelly, &g_wifiUp, &g_wifiReinitNeeded);
 
   // WiFi is opt-in. On a no-PSRAM CYD, watch the free heap and confirm BLE keeps
   // delivering advertisements while associated (see README phase 3).
@@ -193,10 +207,15 @@ void setup() {
       g_clockSynced = (time(nullptr) >= 1000000000L);
       httpBegin(app);
       otaBegin(app.config.otaPassword.c_str());
-    } else {
-      g_ip = "-";
     }
   }
+
+  // Shelly RPC + InfluxDB push run on their own task so the touch UI never
+  // blocks on the synchronous HTTP calls. That task also supervises the WiFi
+  // link, so it is started only after the boot association has finished — two
+  // tasks driving WiFi.begin() at once would race. If the boot association
+  // failed, the supervisor picks it up from here and keeps retrying.
+  netTaskBegin(app, shelly, &g_wifiUp, &g_wifiReinitNeeded);
 
   tBoot = millis();  // start the boot-touch guard window
 }
@@ -323,7 +342,7 @@ void loop() {
   // re-sync the wall clock so the OTA/HTTP/age-check services work again.
   if (g_wifiReinitNeeded) {
     g_wifiReinitNeeded = false;
-    ntpSync(5000, app.config.timezone);
+    ntpSync(1500, app.config.timezone);
     g_clockSynced = (time(nullptr) >= 1000000000L);
     httpBegin(app);
     otaBegin(app.config.otaPassword.c_str());
