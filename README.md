@@ -35,7 +35,10 @@ automatic (normal) mode.
 Dew point uses the Magnus formula (coefficients switch at 0 °C), rounded half
 away from zero to 1 decimal — identical to the Go original.
 
-The fan decision is a strict priority tree (first match wins):
+The fan decision is a strict priority tree (first match wins). Temperatures,
+humidities and dew points are the rolling averages of the last 20 readings per
+sensor (the same values pushed to InfluxDB), so a single outlier advertisement
+cannot flip the fan across the hysteresis band:
 
 1. Manual override — `1` force ON, `2` force OFF (touch UI or HTTP `/override`)
 2. Either sensor has no reading yet → OFF

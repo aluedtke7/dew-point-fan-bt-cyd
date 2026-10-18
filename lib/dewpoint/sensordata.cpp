@@ -65,4 +65,13 @@ double SensorDataList::averageDewPoint() const {
   return roundDouble(total / data_.size(), 1);
 }
 
+SensorData averaged(const SensorData& latest, const SensorDataList& history) {
+  if (history.size() == 0) return latest;
+  SensorData s = latest;
+  s.temperature = history.averageTemperature();
+  s.humidity = history.averageHumidity();
+  s.dewPoint = history.averageDewPoint();
+  return s;
+}
+
 }  // namespace dpf

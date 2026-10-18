@@ -285,14 +285,25 @@ void loop() {
     ResultData result;
     {
       LockGuard lock(app);
-      inside = app.sensors.insideData;
-      outside = app.sensors.outsideData;
+      // Decide on the rolling averages, not the last advertisement: single
+      // outlier readings otherwise jump across the whole hysteresis band.
+      inside = averaged(app.sensors.insideData, app.store.inside);
+      outside = averaged(app.sensors.outsideData, app.store.outside);
       ovr = app.overrideMode;
       result = app.result;  // carries isOn through computeResults
     }
 
+    const bool wasOn = result.shouldBeOn;
     computeResults(inside, outside, result, app.config.fanConfig, ovr, now);
     result.dpDiff = inside.dewPoint - outside.dewPoint;
+    if (result.shouldBeOn != wasOn) {
+      logf("[fan] %s -> %s (%s) in: T=%.1f H=%.1f DP=%.1f  out: T=%.1f H=%.1f "
+           "DP=%.1f  diff=%.2f\n",
+           wasOn ? "ON" : "OFF", result.shouldBeOn ? "ON" : "OFF",
+           reasonName(result.reason), inside.temperature, inside.humidity,
+           inside.dewPoint, outside.temperature, outside.humidity,
+           outside.dewPoint, result.dpDiff);
+    }
 
     // The relay RPC (Shelly) is performed by the network task, which reads
     // result.shouldBeOn and writes back result.isOn; we only publish the

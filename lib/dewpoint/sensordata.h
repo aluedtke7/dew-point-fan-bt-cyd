@@ -104,4 +104,11 @@ class SensorDataList {
   size_t max_;
 };
 
+// `latest` with temperature, humidity and dew point replaced by the rolling
+// averages of `history`; identity and freshness (`scanned`, `hasReading`) stay
+// those of `latest`. Feeding these into the fan decision keeps a single
+// outlier advertisement from jumping across the whole hysteresis band.
+// Returns `latest` unchanged while `history` is empty.
+SensorData averaged(const SensorData& latest, const SensorDataList& history);
+
 }  // namespace dpf

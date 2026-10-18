@@ -62,6 +62,33 @@ void test_average_rounding() {
   assertNear(20.3, store.averageTemperature());
 }
 
+void test_averaged_replaces_values_keeps_freshness() {
+  SensorDataList store(5);
+  store.add(reading(11.6, 77.3, 7.8));
+  store.add(reading(11.5, 77.3, 7.7));
+  store.add(reading(11.4, 77.2, 7.6));
+  store.add(reading(9.9, 76.6, 6.1));  // outlier, also the latest reading
+  SensorData latest = reading(9.9, 76.6, 6.1);
+  latest.scanned = 1234;
+  latest.hasReading = true;
+
+  SensorData s = averaged(latest, store);
+  assertNear(11.1, s.temperature);  // 44.4 / 4
+  assertNear(77.1, s.humidity);     // 308.4 / 4
+  assertNear(7.3, s.dewPoint);      // 29.2 / 4
+  TEST_ASSERT_EQUAL_INT64(1234, s.scanned);
+  TEST_ASSERT_TRUE(s.hasReading);
+}
+
+void test_averaged_empty_history_returns_latest() {
+  SensorDataList store(5);
+  SensorData latest = reading(9.9, 76.7, 6.0);
+  SensorData s = averaged(latest, store);
+  assertNear(9.9, s.temperature);
+  assertNear(76.7, s.humidity);
+  assertNear(6.0, s.dewPoint);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_capacity_clamped_to_minimum_five);
@@ -69,5 +96,7 @@ int main() {
   RUN_TEST(test_empty_averages_are_zero);
   RUN_TEST(test_averages_rounded_to_one_decimal);
   RUN_TEST(test_average_rounding);
+  RUN_TEST(test_averaged_replaces_values_keeps_freshness);
+  RUN_TEST(test_averaged_empty_history_returns_latest);
   return UNITY_END();
 }
