@@ -42,7 +42,7 @@ cannot flip the fan across the hysteresis band:
 
 1. Manual override — `1` force ON, `2` force OFF (touch UI or HTTP `/override`)
 2. Either sensor has no reading yet → OFF
-3. Either sensor's reading is > 5 min old → OFF
+3. Either sensor's reading is > 15 min old → OFF
 4. Inside temp < `minTempInside` (default 10 °C) → OFF
 5. Outside temp < `minTempOutside` (default −10 °C) → OFF
 6. Inside humidity < `minHumidityInside` (default 30 %) → OFF

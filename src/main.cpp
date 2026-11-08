@@ -294,6 +294,7 @@ void loop() {
     }
 
     const bool wasOn = result.shouldBeOn;
+    const Reason prevReason = result.reason;
     computeResults(inside, outside, result, app.config.fanConfig, ovr, now);
     result.dpDiff = inside.dewPoint - outside.dewPoint;
     if (result.shouldBeOn != wasOn) {
@@ -303,6 +304,17 @@ void loop() {
            reasonName(result.reason), inside.temperature, inside.humidity,
            inside.dewPoint, outside.temperature, outside.humidity,
            outside.dewPoint, result.dpDiff);
+    }
+    // Reception health on every switch, and when the data goes stale while the
+    // fan is already off — otherwise long sensor outages stay invisible.
+    if (result.shouldBeOn != wasOn ||
+        (result.reason == Reason::NotEnoughData &&
+         prevReason != Reason::NotEnoughData)) {
+      char inBuf[48], outBuf[48];
+      formatSensorHealth(inBuf, sizeof(inBuf), "in", inside, now);
+      formatSensorHealth(outBuf, sizeof(outBuf), "out", outside, now);
+      logf("[fan] sensors (%s) %s  %s\n", reasonName(result.reason), inBuf,
+           outBuf);
     }
 
     // The relay RPC (Shelly) is performed by the network task, which reads

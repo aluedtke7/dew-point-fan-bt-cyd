@@ -1,5 +1,7 @@
 #include "format.h"
 
+#include "sensordata.h"
+
 #include <cstdio>
 #include <ctime>
 
@@ -9,6 +11,8 @@ namespace {
 // Epoch below which the clock is considered not yet NTP-synced (Sept 2001). Same
 // threshold net.cpp/main.cpp use to gate wall-clock use.
 constexpr time_t kClockSyncedEpoch = 1000000000;
+// Upper bound for the age printed by formatSensorHealth (~27 h).
+constexpr double kMaxHealthAgeSeconds = 99999;
 }  // namespace
 
 size_t formatMeasure(char* buf, size_t cap, double value, const char* unit,
@@ -59,6 +63,22 @@ size_t formatNetLine(char* buf, size_t cap, const char* ip, const char* ssid,
     return static_cast<size_t>(std::snprintf(buf, cap, "IP %s", ip));
   }
   return static_cast<size_t>(std::snprintf(buf, cap, "IP %s   %s", ip, ssid));
+}
+
+size_t formatSensorHealth(char* buf, size_t cap, const char* label,
+                          const SensorData& s, double now) {
+  if (!s.hasReading) {
+    return static_cast<size_t>(std::snprintf(buf, cap, "%s: no data", label));
+  }
+  // Clamp before the integer cast: the unsynced-clock sentinel "now" (1e18)
+  // would overflow a 32-bit long.
+  double age = now - static_cast<double>(s.scanned);
+  if (age < 0) age = 0;
+  if (age > kMaxHealthAgeSeconds) age = kMaxHealthAgeSeconds;
+  return static_cast<size_t>(std::snprintf(
+      buf, cap, "%s: age=%lds rssi=%d bat=%umV", label, static_cast<long>(age),
+      s.rssi,
+      static_cast<unsigned>(s.batLevel)));
 }
 
 }  // namespace dpf

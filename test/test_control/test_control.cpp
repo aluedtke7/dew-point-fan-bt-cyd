@@ -8,7 +8,7 @@
 using namespace dpf;
 
 static constexpr double NOW = 1000000.0;
-static constexpr double OLD = NOW - 10 * 60;  // 10 minutes old -> stale
+static constexpr double OLD = NOW - 16 * 60;  // 16 minutes old -> stale
 
 void setUp() {}
 void tearDown() {}
@@ -71,6 +71,15 @@ void test_data_too_old() {
   TEST_ASSERT_FALSE(r.shouldBeOn);
   TEST_ASSERT_EQUAL(Reason::NotEnoughData, r.reason);
   TEST_ASSERT_FALSE(r.sensorsReady);
+}
+
+void test_data_ten_minutes_old_is_fresh() {
+  // 10 min without an advertisement is still inside the 15 min window, so the
+  // decision proceeds past the freshness check.
+  ResultData r = run(sd(0, 0, 0, NOW - 10 * 60), sd(0, 0, 0, NOW), 0,
+                     FanConfig(), true);
+  TEST_ASSERT_NOT_EQUAL(Reason::NotEnoughData, r.reason);
+  TEST_ASSERT_TRUE(r.sensorsReady);
 }
 
 void test_low_inside_temperature() {
@@ -148,6 +157,7 @@ int main() {
   RUN_TEST(test_no_data_inside);
   RUN_TEST(test_no_data_outside);
   RUN_TEST(test_data_too_old);
+  RUN_TEST(test_data_ten_minutes_old_is_fresh);
   RUN_TEST(test_low_inside_temperature);
   RUN_TEST(test_low_outside_temperature);
   RUN_TEST(test_low_inside_humidity);

@@ -7,6 +7,7 @@
 #include <ctime>
 
 #include "format.h"
+#include "sensordata.h"
 
 using namespace dpf;
 
@@ -118,6 +119,44 @@ void test_net_line_online_without_ip_is_offline() {
   TEST_ASSERT_EQUAL_STRING("IP -- (offline)", buf);
 }
 
+void test_sensor_health_with_reading() {
+  SensorData s;
+  s.hasReading = true;
+  s.scanned = 1000;
+  s.rssi = -91;
+  s.batLevel = 2890;
+  char buf[64];
+  formatSensorHealth(buf, sizeof(buf), "out", s, 1312.0);
+  TEST_ASSERT_EQUAL_STRING("out: age=312s rssi=-91 bat=2890mV", buf);
+}
+
+void test_sensor_health_future_scan_clamps_to_zero() {
+  SensorData s;
+  s.hasReading = true;
+  s.scanned = 1005;
+  s.rssi = -60;
+  s.batLevel = 3000;
+  char buf[64];
+  formatSensorHealth(buf, sizeof(buf), "in", s, 1000.0);
+  TEST_ASSERT_EQUAL_STRING("in: age=0s rssi=-60 bat=3000mV", buf);
+}
+
+void test_sensor_health_unsynced_sentinel_is_capped() {
+  SensorData s;
+  s.hasReading = true;
+  s.scanned = 1000;
+  char buf[64];
+  formatSensorHealth(buf, sizeof(buf), "in", s, 1e18);
+  TEST_ASSERT_EQUAL_STRING("in: age=99999s rssi=0 bat=0mV", buf);
+}
+
+void test_sensor_health_without_reading() {
+  SensorData s;
+  char buf[64];
+  formatSensorHealth(buf, sizeof(buf), "in", s, 1000.0);
+  TEST_ASSERT_EQUAL_STRING("in: no data", buf);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_measure_temperature_with_degree);
@@ -136,5 +175,9 @@ int main() {
   RUN_TEST(test_net_line_offline_drops_stale_address);
   RUN_TEST(test_net_line_online_without_ssid);
   RUN_TEST(test_net_line_online_without_ip_is_offline);
+  RUN_TEST(test_sensor_health_with_reading);
+  RUN_TEST(test_sensor_health_future_scan_clamps_to_zero);
+  RUN_TEST(test_sensor_health_unsynced_sentinel_is_capped);
+  RUN_TEST(test_sensor_health_without_reading);
   return UNITY_END();
 }

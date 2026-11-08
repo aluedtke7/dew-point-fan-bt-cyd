@@ -15,6 +15,8 @@
 
 namespace dpf {
 
+struct SensorData;
+
 // A measured value with a one-decimal fixed format and an appended unit:
 //   valid  -> "%.1f<unit>"   e.g. formatMeasure(buf, cap, 26.0, "`C", true) -> "26.0`C"
 //   !valid -> "--"
@@ -47,5 +49,14 @@ size_t formatHeapSuffix(char* buf, size_t cap, uint32_t freeHeap,
 //              so a moved lease is distinguishable from a dead link.
 size_t formatNetLine(char* buf, size_t cap, const char* ip, const char* ssid,
                      bool online);
+
+// Reception health of one sensor for the fan log, used to tell a fading beacon
+// (low RSSI / battery) from a scanner that stopped delivering:
+//   reading  -> "<label>: age=<s>s rssi=<dBm> bat=<mV>mV"  (age clamped
+//               to 0..99999)
+//   !reading -> "<label>: no data"
+// `now` is epoch seconds, the same clock as SensorData.scanned.
+size_t formatSensorHealth(char* buf, size_t cap, const char* label,
+                          const SensorData& s, double now);
 
 }  // namespace dpf
