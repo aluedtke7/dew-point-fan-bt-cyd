@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 #include <esp_system.h>
+#include <esp_timer.h>
 #include <WiFi.h>
 
 #include <cstring>
@@ -108,7 +109,17 @@ constexpr uint32_t kBlockFloorBytes = 20000;
 uint32_t tTouch = 0, tControl = 0, tScreen = 0, tBoot = 0, tAlive = 0, tHeapReport = 0;
 uint32_t tLastActivity = 0;
 bool dimmed = false;
+int pendingBtn = -1;  // button held, waiting for the long press
 Screen g_screen = Screen::Dashboard;
+
+// Highlight (or with -1 clear) the button awaiting its long press. Returns true
+// when the button row needs a repaint.
+bool setPendingButton(int btn) {
+  if (btn == pendingBtn) return false;
+  pendingBtn = btn;
+  display.setPendingButton(btn);
+  return true;
+}
 
 // Refresh the IP/SSID shown on the diagnostics screen from the WiFi driver.
 // Called from the main task only, so `g_ip`/`g_ssid` stay single-threaded.
@@ -231,12 +242,18 @@ void loop() {
 
   if (ms - tTouch >= kTouchIntervalMs) {
     tTouch = ms;
-    TouchPoint tp = touch.poll();
+    const TouchPoint tp = touch.poll(esp_timer_get_time() / 1000000.0);
     const bool guarded = (ms - tBoot) < kBootTouchGuardMs;
-    if (tp.pressed && !guarded) {
+    if (guarded) {
+      if (tp.event == TouchEvent::Tap) {
+        logf("[touch] ignored during boot guard (px=%d,%d)\n", tp.x, tp.y);
+      }
+    } else if (tp.event == TouchEvent::Tap) {
       tLastActivity = ms;
+      // a new press drops any stale highlight; the button row re-arms below
+      renderNow = setPendingButton(-1);
       if (dimmed) {
-        // wake from dim: restore brightness and consume this tap
+        // wake from dim: restore brightness and consume this press
         backlight.set(app.config.brightness);
         dimmed = false;
       } else if (tp.y < ui::kBannerH + 15) {
@@ -246,23 +263,30 @@ void loop() {
                                                    : Screen::Dashboard;
         renderNow = true;
       } else if (tp.y >= ui::kBtnY) {
-        // bottom button row -> Auto (0) / force On (1) / force Off (2)
-        int mode = tp.x / (ui::kScreenW / ui::kBtnCount);
-        if (mode > 2) mode = 2;
-        int prev;
-        {
-          LockGuard lock(app);
-          prev = app.overrideMode;
-          app.overrideMode = mode;
-        }
-        if (mode != prev) {
-          logf("[override] touch: %s -> %s\n", overrideName(prev),
-               overrideName(mode));
-          renderNow = true;
-        }
+        // bottom button row: highlight now, switch only on a long press so
+        // touch noise can't change the override
+        int btn = tp.x / (ui::kScreenW / ui::kBtnCount);
+        if (btn > 2) btn = 2;
+        renderNow = setPendingButton(btn) || renderNow;
       }
-    } else if (tp.pressed && guarded) {
-      logf("[touch] ignored during boot guard (px=%d,%d)\n", tp.x, tp.y);
+    } else if (tp.event == TouchEvent::LongPress && pendingBtn >= 0) {
+      tLastActivity = ms;
+      // Auto (0) / force On (1) / force Off (2)
+      const int mode = pendingBtn;
+      setPendingButton(-1);
+      int prev;
+      {
+        LockGuard lock(app);
+        prev = app.overrideMode;
+        app.overrideMode = mode;
+      }
+      if (mode != prev) {
+        logf("[override] touch: %s -> %s\n", overrideName(prev),
+             overrideName(mode));
+      }
+      renderNow = true;
+    } else if (tp.event == TouchEvent::Cancel) {
+      renderNow = setPendingButton(-1);
     }
   }
 

@@ -221,17 +221,19 @@ namespace dpf
 
   void DisplayTft::drawButtons(int overrideMode)
   {
-    if (buttonMode_ == overrideMode)
+    if (buttonMode_ == overrideMode && drawnPending_ == pendingBtn_)
       return;
     buttonMode_ = overrideMode;
+    drawnPending_ = pendingBtn_;
     const char *labels[ui::kBtnCount] = {"AUTO", "ON", "OFF"};
     const int w = ui::kScreenW / ui::kBtnCount;
     for (int i = 0; i < ui::kBtnCount; ++i)
     {
       const int x = i * w;
       const bool active = (overrideMode == i);
-      const uint16_t fill = active ? kAccent : kBtnOff;
-      const uint16_t txt = active ? kBg : kLabel;
+      const bool pending = (pendingBtn_ == i);
+      const uint16_t fill = pending ? kReason : (active ? kAccent : kBtnOff);
+      const uint16_t txt = (pending || active) ? kBg : kLabel;
       tft.fillRoundRect(x + 2, ui::kBtnY, w - 4, ui::kBtnH, 4, fill);
       tft.drawRoundRect(x + 2, ui::kBtnY, w - 4, ui::kBtnH, 4, kBorder);
       tft.setTextColor(txt, fill);

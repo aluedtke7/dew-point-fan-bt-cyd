@@ -48,10 +48,16 @@ class DisplayTft {
                        int overrideMode, const std::string& ip,
                        const std::string& ssid, bool online, double now);
 
+  // Highlight the button being held for a long press (-1 = none). Takes effect
+  // on the next show*() call.
+  void setPendingButton(int btn) { pendingBtn_ = btn; }
+
  private:
   Screen screen_ = Screen::Boot;
   uint16_t bannerColor_ = 0;  // last banner fill; forces a repaint on change
   int buttonMode_ = -1;       // last override mode drawn on the button row
+  int pendingBtn_ = -1;       // button held, awaiting long press
+  int drawnPending_ = -1;     // last pending button drawn
 
   void drawButtons(int overrideMode);
 };

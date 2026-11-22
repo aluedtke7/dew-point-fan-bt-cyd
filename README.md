@@ -27,8 +27,9 @@ so you can confirm at a glance which version is currently flashed.
 A tap on the header line (`FAN ON/OFF` and `DIAGNOSTICS`) will toggle between the main
 screen and the diagnostics screen.
 
-A tap on the three buttons at the bottom will switch between the override mode and the
-automatic (normal) mode.
+Press and **hold** one of the three buttons at the bottom for about 0.8 s to switch
+between the override mode and the automatic (normal) mode. The button turns yellow
+while it is held; releasing earlier changes nothing.
 
 ## How it decides (control logic)
 
@@ -407,12 +408,14 @@ test/                   Unity test suites (run under env:native), one dir per mo
 - **WiFi + BLE coexistence** on no-PSRAM: enable WiFi only after checking free
   heap (`ESP.getFreeHeap()`) and that BLE keeps updating while associated.
 - Touch tap-zone thresholds are approximate — calibrate on the device to your needs.
-- **Phantom taps (touch noise).** The XPT2046 library's own `touched()` gate
-  (pressure `Z >= 400`) is too low on many CYD boards: electrical noise spikes
-  cross it and register as real taps — typically clustered near the bottom-right
-  "Off" button, which silently forced the override OFF. `touch.cpp` therefore adds
-  an app-level pressure gate (`kMinPressure`, default 600): reads below it are
-  rejected as noise (without consuming the next genuine press). At
-  `CORE_DEBUG_LEVEL >= 2` each accepted tap logs its `z=` value — raise
-  `kMinPressure` above any lingering phantoms, or lower it if firm taps are being
-  dropped.
+- **Phantom taps (touch noise).** The XPT2046 reports noise bursts that pass the
+  library's `touched()` gate and even a firm pressure gate (`z` up to ~1600). They
+  typically read saturated raw values (~3900-4095 on both axes), which map onto the
+  bottom-right "Off" button and silently forced the override OFF. The pure
+  `TouchGesture` (`lib/dewpoint/touch_gesture.*`) therefore rejects samples with
+  `z < kMinPressure` (600) or raw values outside `kRawValidMin..kRawValidMax`
+  (150..3900; one dropout per press is tolerated), requires the press to stay
+  within `kMaxDrift` raw units and enough consecutive samples, and the
+  override buttons act only on a long press (`kLongPressSeconds`, 0.8 s). At
+  `CORE_DEBUG_LEVEL >= 2` accepted gestures log as `[touch] tap/long ...` and each
+  rejected noise burst as one `[touch] rejected ...` line.

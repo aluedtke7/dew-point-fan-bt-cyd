@@ -23,16 +23,13 @@ constexpr int kRawMinX = 300;
 constexpr int kRawMaxX = 3800;
 constexpr int kRawMinY = 300;
 constexpr int kRawMaxY = 3800;
+// Real presses must map inside the plausibility window, or the screen edges
+// become unreachable (see kRawValidMax in touch_gesture.h).
+static_assert(kRawMinX >= kRawValidMin && kRawMaxX <= kRawValidMax &&
+                  kRawMinY >= kRawValidMin && kRawMaxY <= kRawValidMax,
+              "touch calibration must lie inside the plausible raw window");
 constexpr int kScreenW = 320;
 constexpr int kScreenH = 240;
-
-// Minimum touch pressure (XPT2046 Z) to accept a press. The library's own
-// touched() gate is Z_THRESHOLD=400, which is too low on many CYD boards: noise
-// spikes barely cross it and register as phantom taps (consistently near the
-// bottom-right "Off" button). Requiring a firmer press here rejects that noise.
-// Tune from the z= values printed at CORE_DEBUG_LEVEL >= 2 if genuine taps are
-// missed (lower it) or phantoms persist (raise it).
-constexpr int kMinPressure = 600;
 
 SPIClass touchSpi(VSPI);
 XPT2046_Touchscreen ts(kTouchCs, kTouchIrq);
@@ -52,35 +49,33 @@ void Touch::begin() {
   ts.setRotation(1);  // match the display landscape orientation
 }
 
-TouchPoint Touch::poll() {
-  if (!ts.touched()) {
-    wasTouched_ = false;
-    debounceCount_ = 0;
-    return {};
+TouchPoint Touch::poll(double now) {
+  TouchSample s;
+  if (ts.touched()) {
+    const TS_Point p = ts.getPoint();
+    s = {true, p.x, p.y, p.z};
   }
 
-  TS_Point p = ts.getPoint();
-  // Reject low-pressure reads: these are electrical noise, not real presses.
-  if (p.z < kMinPressure) {
-    debounceCount_ = 0;
-    return {};
+#if CORE_DEBUG_LEVEL >= 2
+  // One line per noise burst, so rejected phantoms stay visible in the log.
+  const bool rejected = s.down && s.z >= kMinPressure && !isPlausible(s);
+  if (rejected && !wasRejected_) {
+    logf("[touch] rejected raw=(%d,%d) z=%d\n", s.rawX, s.rawY, s.z);
   }
-
-  // Require the touch to be sustained across multiple consecutive polls before
-  // accepting it. A single noise spike lasting 1-2 polls is silently dropped;
-  // a real finger press (150ms+) easily clears the threshold.
-  debounceCount_++;
-  if (debounceCount_ < kDebouncePolls) return {};
-
-  if (wasTouched_) return {};  // still held; only act on the rising edge
-  wasTouched_ = true;
+  wasRejected_ = rejected;
+#endif
 
   TouchPoint tp;
-  tp.pressed = true;
-  tp.x = mapClamp(p.x, kRawMinX, kRawMaxX, kScreenW - 1);
-  tp.y = mapClamp(p.y, kRawMinY, kRawMaxY, kScreenH - 1);
+  tp.event = gesture_.update(s, now);
+  if (tp.event == TouchEvent::None) return tp;
+  tp.x = mapClamp(gesture_.rawX(), kRawMinX, kRawMaxX, kScreenW - 1);
+  tp.y = mapClamp(gesture_.rawY(), kRawMinY, kRawMaxY, kScreenH - 1);
 #if CORE_DEBUG_LEVEL >= 2
-  logf("[touch] raw=(%d,%d) px=(%d,%d) z=%d\n", p.x, p.y, tp.x, tp.y, p.z);
+  if (tp.event != TouchEvent::Cancel) {
+    logf("[touch] %s raw=(%d,%d) px=(%d,%d) z=%d\n",
+         tp.event == TouchEvent::Tap ? "tap" : "long", gesture_.rawX(),
+         gesture_.rawY(), tp.x, tp.y, s.z);
+  }
 #endif
   return tp;
 }

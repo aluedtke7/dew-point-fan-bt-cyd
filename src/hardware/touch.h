@@ -1,16 +1,18 @@
 // Resistive touch (XPT2046) driver on the CYD's dedicated VSPI bus.
-// Reports a fresh press as a point in screen pixels (landscape, rotation 1);
-// the caller (main.cpp) decides what each region does — the bottom button row
-// (Auto/On/Off) and the top banner (switch screen). Only the rising edge of a
-// press is reported.
+// Reports gestures (see lib/dewpoint/touch_gesture.h) at a point in screen
+// pixels (landscape, rotation 1); the caller (main.cpp) decides what each
+// region does — the bottom button row (Auto/On/Off, long press only) and the
+// top banner (switch screen).
 #pragma once
+
+#include "touch_gesture.h"
 
 namespace dpf {
 
-// A touch sample. `pressed` is true only on the first poll of a new press;
-// `x`/`y` are then valid screen pixels (0..319, 0..239).
+// A touch gesture. When `event` is not None, `x`/`y` are the screen pixels
+// (0..319, 0..239) where the press settled.
 struct TouchPoint {
-  bool pressed = false;
+  TouchEvent event = TouchEvent::None;
   int x = 0;
   int y = 0;
 };
@@ -18,13 +20,14 @@ struct TouchPoint {
 class Touch {
  public:
   void begin();
-  // Returns a TouchPoint with pressed=true once per fresh press, else pressed=false.
-  TouchPoint poll();
+  // Samples the controller once; `now` is monotonic seconds (esp_timer).
+  TouchPoint poll(double now);
 
  private:
-  bool wasTouched_ = false;
-  int debounceCount_ = 0;
-  static constexpr int kDebouncePolls = 3;  // 3 × 50ms = 150ms sustained
+  TouchGesture gesture_;
+#if CORE_DEBUG_LEVEL >= 2
+  bool wasRejected_ = false;  // debug log: one line per noise burst
+#endif
 };
 
 }  // namespace dpf
